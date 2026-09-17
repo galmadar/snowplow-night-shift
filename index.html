@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Snowplow Night Shift</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>❄️</text></svg>" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --ink: #eef3fb;
+        --dim: #a9b4c8;
+        --panel: rgba(12, 18, 34, 0.78);
+        --edge: rgba(255, 255, 255, 0.14);
+        --gold: #f2c230;
+        --green: #3fbf5f;
+        --orange: #ff7b1c;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0a1024; }
+      body {
+        font: 15px/1.45 ui-rounded, "SF Pro Rounded", "Avenir Next", Verdana, sans-serif;
+        color: var(--ink);
+      }
+      #view { display: block; width: 100vw; height: 100vh; }
+
+      #hud { position: fixed; inset: 0; pointer-events: none; }
+      .hud-layer { position: absolute; inset: 0; }
+      [hidden] { display: none !important; }
+      .panel {
+        position: absolute;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 14px;
+        padding: 12px 16px;
+        backdrop-filter: blur(9px);
+      }
+
+      .clock-panel { top: 20px; left: 20px; min-width: 220px; }
+      .clock { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; }
+      .sub { color: var(--dim); font-size: 13px; }
+      .bar {
+        height: 8px;
+        border-radius: 99px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+        margin-top: 8px;
+        flex: 1;
+      }
+      .bar-fill { height: 100%; border-radius: 99px; transition: width 0.2s; }
+      .night-fill { background: linear-gradient(90deg, #3a4a8c, #f7b267); }
+      .salt-fill { background: #d9c9b0; }
+      .salt-fill.low { background: #e0463a; }
+
+      .gauge-panel {
+        left: 50%;
+        bottom: 20px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        white-space: nowrap;
+      }
+      .chip {
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 13px;
+        border: 1px solid var(--edge);
+        color: var(--dim);
+      }
+      .chip.on { color: #1a1206; background: var(--gold); border-color: var(--gold); font-weight: 700; }
+      .chip.ice { color: #06202c; background: #6fd3ff; font-weight: 700; animation: blink 0.6s infinite alternate; }
+      @keyframes blink { to { opacity: 0.45; } }
+      .salt { display: flex; align-items: center; gap: 8px; width: 170px; }
+      .salt .bar { margin-top: 0; }
+      .label { color: var(--dim); font-size: 13px; }
+
+      .map-panel { top: 20px; right: 20px; padding: 10px; }
+      .minimap { display: block; border-radius: 6px; image-rendering: pixelated; width: 270px; }
+      .map-key { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 11px; color: var(--dim); max-width: 270px; }
+      .map-key i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+
+      .notice {
+        position: absolute;
+        left: 50%;
+        bottom: 84px;
+        transform: translateX(-50%) translateY(6px);
+        padding: 8px 18px;
+        border-radius: 999px;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        opacity: 0;
+        transition: opacity 0.25s, transform 0.25s;
+        white-space: nowrap;
+      }
+      .notice.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .notice.warn { color: #ffcf7a; }
+      .notice.good { color: #8fd694; }
+
+      .card {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: min(460px, calc(100vw - 32px));
+        background: rgba(12, 18, 34, 0.92);
+        border: 1px solid var(--edge);
+        border-radius: 20px;
+        padding: 24px 28px;
+        pointer-events: auto;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      }
+      .card h1 { margin: 0 0 10px; font-size: 26px; }
+      .card ul { text-align: left; padding-left: 20px; margin: 12px 0 18px; color: var(--dim); }
+      .card li { margin: 4px 0; }
+      .card b { color: var(--ink); }
+      .card b.gold { color: var(--gold); }
+      .card b.green { color: var(--green); }
+      .stars { font-size: 44px; color: var(--gold); letter-spacing: 6px; margin: 6px 0; }
+      .go {
+        font: inherit;
+        font-weight: 700;
+        font-size: 16px;
+        border: 0;
+        border-radius: 999px;
+        padding: 10px 22px;
+        background: var(--orange);
+        color: #1a0c02;
+        cursor: pointer;
+        margin-top: 8px;
+      }
+      .go:hover { filter: brightness(1.1); }
+
+      #help {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 14px;
+        padding: 10px 14px;
+        color: var(--dim);
+        font-size: 12px;
+        line-height: 1.7;
+      }
+      #help b { color: var(--ink); font-weight: 600; }
+      @media (max-width: 900px) { #help { display: none; } }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="hud"></div>
+    <div id="help">
+      <b>↑ ↓</b> / <b>W S</b> — drive, reverse<br />
+      <b>← →</b> / <b>A D</b> — steer<br />
+      <b>Space</b> — blade down / up<br />
+      <b>E</b> — salt spreader<br />
+      <b>C</b> — camera up high / behind<br />
+      <b>N N</b> — skip to 6 AM<br />
+      <b>R</b> — start the night again
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
